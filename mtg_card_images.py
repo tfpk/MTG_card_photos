@@ -10,6 +10,7 @@ import argparse
 GATHERER_TEMPLATE = "http://gatherer.wizards.com/Pages/Search/Default.aspx?name=+[{name}]"
 IMAGE_URL_BASE = "http://gatherer.wizards.com/"
 FILE_NAME_TEMPLATE = "{num}_{name}.{format}"
+# id of images on WotC site
 IMAGE_ID = re.compile(r"ctl00_ctl00_ctl00_MainContent_SubContent_SubContent.*_cardImage")
 
 DONE_MSG = "{index:<5}| DONE | Image {text} created as {dest}."
@@ -23,14 +24,14 @@ HELP = {
     "out": "Output directory",
 }
 
-rows = []
-
 parser = argparse.ArgumentParser(description="Download card photos from Gatherer.")
 
 parser.add_argument('file', help=HELP['file'])
 parser.add_argument('--template', default=FILE_NAME_TEMPLATE, help=HELP['template'])
 parser.add_argument('--out', help=HELP['out'])
 args = parser.parse_args()
+
+rows = []
 
 if args.out and args.template:
     FILE_NAME_TEMPLATE = args.out.strip('/') + '/' + args.template
@@ -44,22 +45,27 @@ with open(args.file, 'r') as names:
         rows.append(line)
 
 for index, row in enumerate(rows):
-    file_dest = FILE_NAME_TEMPLATE.format(num=index, name=row, format='png')
+    # Remove strange characters
+    row = row.replace('\n', '').replace('?', '')
+    # Fix spaces and quotes
+    pretty_row = row.replace(' ', '-').replace('"', '')
+    
+    file_dest = FILE_NAME_TEMPLATE.format(num=index, name=pretty_row, format='png')
+    
     if os.path.exists(file_dest):
-        print(SKIP_MSG.format(index=index, text=row.strip('\n')))
+        print(SKIP_MSG.format(index=index, text=pretty_row))
         continue
     
     req = requests.get(GATHERER_TEMPLATE.format(name=row))
     bs = bs4.BeautifulSoup(req.content, 'lxml')
    
     try:
-        print(bs.text)
-        image_url = bs.find('img', attrs={'id': IMAGE_ID})
-        image_url = image_url['src'].replace('../', '')
+        image_obj = bs.find('img', attrs={'id': IMAGE_ID})
+        image_url = image_obj['src'].replace('../', '')
         image_req = requests.get(IMAGE_URL_BASE + image_url)
         with open(file_dest, 'wb') as img_file:
             img_file.write(image_req.content)
-            print(DONE_MSG.format(index=index, text=row.strip('\n'), dest=file_dest))
+            print(DONE_MSG.format(index=index, text=pretty_row, dest=file_dest))
     except Exception as e:
-        print(FAIL_MSG.format(index=index, text=row.strip('\n')))
-        traceback.print_exc()
+        print(FAIL_MSG.format(index=index, text=pretty_row))
+        # traceback.print_exc()
